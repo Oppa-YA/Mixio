@@ -77,8 +77,9 @@ namespace DeejNG.Dialogs
         public void SmoothAndSetVolume(float rawLevel, bool suppressEvent = false)
         {
             _suppressEvents = suppressEvent;
-            _smoothedVolume = _smoothedVolume == 0 ? rawLevel : _smoothedVolume + (rawLevel - _smoothedVolume) * SmoothingFactor;
-            SetVolume(_smoothedVolume);
+            //_smoothedVolume = _smoothedVolume == 0 ? rawLevel : _smoothedVolume + (rawLevel - _smoothedVolume) * SmoothingFactor;
+            //SetVolume(_smoothedVolume);
+            SetVolume(rawLevel);
             _suppressEvents = false;
         }
 
