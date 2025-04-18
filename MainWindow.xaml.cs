@@ -277,7 +277,11 @@ namespace DeejNG
                     string sessionId = session.GetSessionIdentifier ?? string.Empty;
                     string instanceId = session.GetSessionInstanceIdentifier ?? string.Empty;
 
-                    _sessionIdCache.Add((session, sessionId.ToLower(), instanceId.ToLower()));
+                    // Add session to cache if not already present
+                    if (!_sessionIdCache.Any(tuple => tuple.sessionId == sessionId.ToLower() || tuple.instanceId == instanceId.ToLower()))
+                    {
+                        _sessionIdCache.Add((session, sessionId.ToLower(), instanceId.ToLower()));
+                    }
 
                     // Debug: log what we're caching
                    // Debug.WriteLine($"[Session] ID: {sessionId}, Instance: {instanceId}");
@@ -770,16 +774,15 @@ namespace DeejNG
             if (!_metersEnabled)
                 return;
 
+            // Refresh audio sessions periodically
             if ((DateTime.Now - _lastDeviceRefresh).TotalSeconds > 5)
             {
+                _audioDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
                 _cachedSessions = _audioDevice.AudioSessionManager.Sessions;
                 _lastDeviceRefresh = DateTime.Now;
-            }
-            if ((DateTime.Now - _lastSessionRefresh).TotalSeconds > 2)
-            {
-                _cachedSessions = _audioDevice.AudioSessionManager.Sessions;
-                _lastSessionRefresh = DateTime.Now;
-                RefreshSessionLookup(); // <- keep this if you're caching sessionId/instanceId
+
+                // Re-enumerate sessions to detect new applications
+                RefreshSessionLookup();
             }
 
             const float visualGain = 1.5f;
@@ -789,7 +792,7 @@ namespace DeejNG
             {
                 var target = ctrl.TargetExecutable?.Trim().ToLower();
 
-                // ✅ Skip unassigned channels and clear meter
+                // Skip unassigned channels and clear meter
                 if (string.IsNullOrWhiteSpace(target))
                 {
                     ctrl.UpdateAudioMeter(0);
