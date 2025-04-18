@@ -21,6 +21,7 @@ using Microsoft.Win32;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 using DeejNG.Classes;
+using System.ComponentModel;
 
 namespace DeejNG
 {
