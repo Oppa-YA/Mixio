@@ -52,6 +52,7 @@ namespace DeejNG
         // Track connection state
 
         private bool isDarkTheme = false;
+        private DispatcherTimer _comPortMonitorTimer;
 
         #endregion Private Fields
 
@@ -250,6 +251,12 @@ namespace DeejNG
         #region Private Methods
         protected override void OnStateChanged(EventArgs e)
         {
+            _comPortMonitorTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(2) // Check every 2 seconds
+            };
+            _comPortMonitorTimer.Tick += MonitorComPort;
+            _comPortMonitorTimer.Start();
             if (WindowState == WindowState.Minimized)
             {
                 // Only hide the window and show the NotifyIcon when minimized
@@ -561,7 +568,8 @@ namespace DeejNG
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to open serial port {portName}: {ex.Message}", "Serial Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                //MessageBox.Show($"Failed to open serial port {portName}: {ex.Message}", "Serial Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                //Debug.WriteLine($"Failed to open serial port {portName}: {ex.Message}");
                 _isConnected = false;
                 UpdateConnectionStatus();
             }
@@ -955,6 +963,36 @@ namespace DeejNG
             ApplyTheme(theme);
             SaveSettings();
 
+        }
+                private void MonitorComPort(object? sender, EventArgs e)
+        {
+            try
+            {
+                // Check if the port is open
+                if (_serialPort != null && !_serialPort.IsOpen)
+                {
+                    _serialPort.Close();
+                    _serialPort.Dispose();
+                    _serialPort = null;
+                    _isConnected = false;
+                    UpdateConnectionStatus();
+                }
+
+                // Attempt to reconnect if the port is not open
+                if (_serialPort == null)
+                {
+                    var availablePorts = SerialPort.GetPortNames();
+                    if (availablePorts.Contains(_appSettings.PortName))
+                    {
+                        InitSerial(_appSettings.PortName, 9600);
+                        Debug.WriteLine($"Reconnected to {_appSettings.PortName}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error monitoring COM port: {ex.Message}");
+            }
         }
     }
     static class IconHandler
