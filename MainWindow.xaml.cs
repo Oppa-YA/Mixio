@@ -13,6 +13,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using System.ComponentModel;
 
 using DeejNG.Dialogs;
 using DeejNG.Services;
