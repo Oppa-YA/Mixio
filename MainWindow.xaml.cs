@@ -268,7 +268,7 @@ namespace DeejNG
             else
             {
                 // Ensure the NotifyIcon is hidden when the window is not minimized
-                MyNotifyIcon.Visibility = Visibility.Collapsed;
+                // MyNotifyIcon.Visibility = Visibility.Collapsed;
             }
 
             base.OnStateChanged(e);
