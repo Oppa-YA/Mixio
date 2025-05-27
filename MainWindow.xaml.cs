@@ -1351,6 +1351,16 @@ namespace DeejNG
             }
         }
 
+        protected override void OnClosing(CancelEventArgs e)
+        {
+                base.OnClosing(e);
+                // Cancel the close operation and minimize to tray
+                e.Cancel = true;
+                WindowState = WindowState.Minimized; // Ensure the state is consistent
+            Hide(); // Hide the window instead of closing
+            MyNotifyIcon.Visibility = Visibility.Visible;
+        }
+
         private void MyNotifyIcon_Click(object sender, EventArgs e)
         {
             if (this.WindowState == WindowState.Minimized)
