@@ -89,6 +89,7 @@ namespace DeejNG
         // Track connection state
 
         private bool isDarkTheme = false;
+        private bool _manualDisconnect = false; // <-- Added variable
 
         #endregion Private Fields
 
@@ -992,10 +993,10 @@ namespace DeejNG
             // Update UI on the dispatcher thread
             Dispatcher.BeginInvoke(() =>
             {
-                ConnectionStatus.Text = "Disconnected - Reconnecting...";
-                ConnectionStatus.Foreground = Brushes.Red;
+                UpdateConnectionStatus();
                 ConnectButton.IsEnabled = true;
             });
+
 
             // Try to clean up the serial port
             try
@@ -1015,8 +1016,8 @@ namespace DeejNG
                 Debug.WriteLine($"[ERROR] Failed to cleanup serial port: {ex.Message}");
             }
 
-            // Make sure reconnect timer is running
-            if (!_serialReconnectTimer.IsEnabled)
+            // Only start the reconnect timer if not a manual disconnect
+            if (!_serialReconnectTimer.IsEnabled && !_manualDisconnect)
             {
                 _serialReconnectTimer.Start();
             }
@@ -1176,6 +1177,9 @@ namespace DeejNG
                 _lastConnectedPort = portName;
                 _serialDisconnected = false;
                 _serialPortFullyInitialized = false;
+
+                // Reset manual disconnect flag on successful connection
+                _manualDisconnect = false;
 
                 // Reset volume application flag on new connection
                 _allowVolumeApplication = false;
@@ -1595,49 +1599,33 @@ namespace DeejNG
 
         private void SerialReconnectTimer_Tick(object sender, EventArgs e)
         {
-            if (_isClosing || !_serialDisconnected) return;
+            if (_isClosing || !_serialDisconnected || _manualDisconnect) return;
 
             Debug.WriteLine("[SerialReconnect] Attempting to reconnect...");
 
-            // Try the saved port first
-            if (TryConnectToSavedPort())
+            // Only try the last known port
+            var availablePorts = SerialPort.GetPortNames();
+            if (!string.IsNullOrEmpty(_lastConnectedPort) && availablePorts.Contains(_lastConnectedPort))
             {
-                Debug.WriteLine("[SerialReconnect] Successfully reconnected to saved port");
-                return;
-            }
-
-            // If saved port doesn't work, try any available port
-            try
-            {
-                var availablePorts = SerialPort.GetPortNames();
-
-                if (availablePorts.Length == 0)
-                {
-                    Debug.WriteLine("[SerialReconnect] No serial ports available");
-                    Dispatcher.Invoke(() =>
-                    {
-                        ConnectionStatus.Text = "Waiting for device...";
-                        ConnectionStatus.Foreground = Brushes.Orange;
-                        LoadAvailablePorts(); // Refresh the dropdown
-                    });
-                    return;
-                }
-
-                // Try the first available port if our saved port isn't available
-                string portToTry = availablePorts[0];
-                Debug.WriteLine($"[SerialReconnect] Trying first available port: {portToTry}");
-
-                InitSerial(portToTry, 9600);
+                Debug.WriteLine($"[SerialReconnect] Trying last known port: {_lastConnectedPort}");
+                InitSerial(_lastConnectedPort, 9600);
 
                 if (_isConnected)
                 {
-                    Debug.WriteLine($"[SerialReconnect] Successfully connected to {portToTry}");
+                    Debug.WriteLine($"[SerialReconnect] Successfully reconnected to {_lastConnectedPort}");
                     _serialDisconnected = false;
+                    // _manualDisconnect is reset in InitSerial
                 }
             }
-            catch (Exception ex)
+            else
             {
-                Debug.WriteLine($"[SerialReconnect] Failed to reconnect: {ex.Message}");
+                Debug.WriteLine("[SerialReconnect] Last known port not available, waiting...");
+                Dispatcher.Invoke(() =>
+                {
+                    ConnectionStatus.Text = "Waiting for device...";
+                    ConnectionStatus.Foreground = Brushes.Orange;
+                    LoadAvailablePorts();
+                });
             }
         }
         private void SerialWatchdogTimer_Tick(object sender, EventArgs e)
@@ -1654,52 +1642,9 @@ namespace DeejNG
                     return;
                 }
 
-                // Check if we're receiving data
-                if (_expectingData)
-                {
-                    TimeSpan elapsed = DateTime.Now - _lastValidDataTimestamp;
-
-                    // If it's been more than 5 seconds without data, assume disconnected
-                    if (elapsed.TotalSeconds > 5)
-                    {
-                        _noDataCounter++;
-                        Debug.WriteLine($"[SerialWatchdog] No data received for {elapsed.TotalSeconds:F1} seconds (count: {_noDataCounter})");
-
-                        // After 3 consecutive timeouts, consider disconnected
-                        if (_noDataCounter >= 3)
-                        {
-                            Debug.WriteLine("[SerialWatchdog] Too many timeouts, considering disconnected");
-                            HandleSerialDisconnection();
-                            _noDataCounter = 0;
-                            return;
-                        }
-
-                        // Try to write a single byte to test connection
-                        try
-                        {
-                            // A zero-length write doesn't always work, so use a simple linefeed
-                            // Most Arduino-based controllers will ignore this
-                            _serialPort.Write(new byte[] { 10 }, 0, 1);
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"[SerialWatchdog] Exception when testing connection: {ex.Message}");
-                            HandleSerialDisconnection();
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        // Reset counter if we're getting data
-                        _noDataCounter = 0;
-                    }
-                }
-                else if (_isConnected && (DateTime.Now - _lastValidDataTimestamp).TotalSeconds > 10)
-                {
-                    // If we haven't seen any data for 10 seconds after connecting,
-                    // we may need to set the flag to start expecting data
-                    _expectingData = true;
-                }
+                // REMOVE data timeout checks here!
+                // Do not check for _expectingData or _lastValidDataTimestamp
+                // This way, as long as the port is open, we consider it connected.
             }
             catch (Exception ex)
             {
@@ -2080,8 +2025,9 @@ namespace DeejNG
             }
             else if (_serialDisconnected)
             {
-                statusText = "Disconnected - Reconnecting...";
-                statusColor = Brushes.Orange;
+                // Show "Disconnected" if manual, otherwise "Disconnected - Reconnecting..."
+                statusText = _manualDisconnect ? "Disconnected" : "Disconnected - Reconnecting...";
+                statusColor = _manualDisconnect ? Brushes.Red : Brushes.Orange;
             }
             else
             {
@@ -2102,29 +2048,33 @@ namespace DeejNG
 
         // NEW: Add disconnect functionality
         private void Disconnect_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (_serialPort != null && _serialPort.IsOpen)
-                {
-                    _serialPort.Close();
-                    _serialPort.DataReceived -= SerialPort_DataReceived;
-                    _serialPort.ErrorReceived -= SerialPort_ErrorReceived;
-                }
+  {
+      try
+      {
+          _manualDisconnect = true; // <-- Added this line
 
-                _isConnected = false;
-                _serialDisconnected = true;
-                _serialPortFullyInitialized = false;
+          if (_serialPort != null && _serialPort.IsOpen)
+          {
+              _serialPort.Close();
+              _serialPort.DataReceived -= SerialPort_DataReceived;
+              _serialPort.ErrorReceived -= SerialPort_ErrorReceived;
+          }
 
-                UpdateConnectionStatus();
+          _isConnected = false;
+          _serialDisconnected = true;
+          _serialPortFullyInitialized = false;
 
-                Debug.WriteLine("[Manual] User disconnected serial port");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Failed to disconnect: {ex.Message}");
-            }
-        }        // Update the UpdateMeters method in MainWindow.xaml.cs
+          _serialReconnectTimer?.Stop(); // Added to prevent the timer from trying to reconnect after a manual disconnect.
+
+          UpdateConnectionStatus();
+
+          Debug.WriteLine("[Manual] User disconnected serial port");
+      }
+      catch (Exception ex)
+      {
+          Debug.WriteLine($"[ERROR] Failed to disconnect: {ex.Message}");
+      }
+  }        // Update the UpdateMeters method in MainWindow.xaml.cs
 
         private void UpdateMeters(object? sender, EventArgs e)
         {
