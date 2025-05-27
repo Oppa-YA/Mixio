@@ -857,8 +857,38 @@ namespace DeejNG
 
         private async void ExitMenuItem_Click(object sender, RoutedEventArgs e)
         {
+            try
+            {
+                // Perform serial port cleanup
+                if (_serialPort != null)
+                {
+                    _serialPort.DataReceived -= SerialPort_DataReceived;
 
-            Application.Current.Shutdown();
+                    if (_serialPort.IsOpen)
+                    {
+                        // Toggle DTR to reset the Arduino
+                        _serialPort.DtrEnable = false; // Disable DTR
+                        await Task.Delay(100);        // Wait for the signal to propagate
+                        _serialPort.DtrEnable = true; // Re-enable DTR
+                        await Task.Delay(100);        // Wait for the reset to complete
+                        _serialPort.Close();          // Close the port
+                        await Task.Delay(100);        // Allow time for the port to close properly
+                    }
+                    _serialPort.Dispose(); // Dispose of the port
+                    _serialPort = null;
+                }
+                _isConnected = false;
+                UpdateConnectionStatus();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error while closing serial port: {ex.Message}", "Cleanup Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                // Ensure the application shuts down even if an exception occurs
+                Application.Current.Shutdown();
+            }
         }
 
         private void GenerateSliders(int count)
