@@ -1060,6 +1060,15 @@ namespace DeejNG
                         // Process the data for existing sliders only
                         int maxIndex = Math.Min(parts.Length, _channelControls.Count);
 
+                        if (_channelControls.Count != parts.Length)
+                        {
+                            Debug.WriteLine($"[INFO] Incoming data has {parts.Length} parts, regenerating sliders to match.");
+                            _expectedSliderCount = parts.Length;
+                            GenerateSliders(parts.Length);
+                            // After regenerating, return so the next data packet will be processed with the correct number of sliders
+                            return;
+                        }
+
                         for (int i = 0; i < maxIndex; i++)
                         {
                             if (!float.TryParse(parts[i].Trim(), out float level)) continue;
