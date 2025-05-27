@@ -837,7 +837,6 @@ namespace DeejNG
                 string shortcutPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                     "Microsoft", "Windows", "Start Menu", "Programs",
-                    "Jimmy White", // ← Publisher name
                     "DeejNG",      // ← Product name
                     "DeejNG.appref-ms");
 
